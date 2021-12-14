@@ -37,7 +37,7 @@ func (p *Player) makeMoveAsRiddler(g *Game) {
 		if err != nil {
 			fmt.Println("Ya stupid dumba, write proper number!")
 			continue
-		} else if amount >= 0 && amount <= int(p.MarblesAmount) {
+		} else if amount < 0 || amount > int(p.MarblesAmount) {
 			fmt.Println("Ya stupid dumba, write proper amount of marbles you have!")
 			continue
 		}
@@ -72,10 +72,14 @@ loopA:
 		text, _ := reader.ReadString('\n')
 		bet, err := strconv.Atoi(text)
 		if err != nil {
-			// TODO
+			fmt.Println(err)
+		} else if bet < 0 || bet > int(p.MarblesAmount) {
+			fmt.Println("Ya stupid dumba, write proper amount of marbles you have!")
+		} else {
+			g.bet = MarblesAmount(bet)
+			break
 		}
 	}
-
 }
 
 type Role uint8
@@ -100,17 +104,55 @@ type Game struct {
 	bet           MarblesAmount
 }
 
-func NewGame() Game {
+func NewGame() *Game {
 	player1_name := getPlayerName()
 	player2_name := getPlayerName()
 
 	player1 := Player{Name: player1_name, MarblesAmount: INIT_MARBLES_AMOUNT}
 	player2 := Player{Name: player2_name, MarblesAmount: INIT_MARBLES_AMOUNT}
 
-	return Game{
+	return &Game{
 		Player1: player1,
 		Player2: player2,
 	}
+}
+
+func (g *Game) EndMove() bool {
+	// Validation
+	if g.parety == 0 || g.guessedParety == 0 || g.bet == 0 {
+		panic("LOOOOOL!")
+	}
+
+	// Getting guesser and riddler
+	var riddler *Player
+	var guesser *Player
+	for _, p := range []*Player{&g.Player1, &g.Player2} {
+		switch p.role {
+		case Riddler:
+			riddler = p
+		case Guesser:
+			guesser = p
+		}
+	}
+
+	if g.parety == g.guessedParety {
+		// Guesser won
+		return transferBet(guesser, riddler, g.bet)
+	} else {
+		// Riddler won
+		return transferBet(riddler, guesser, g.bet)
+	}
+}
+
+// Transfer bet from the looser to the winner
+// and check if looser is lack of marbles
+func transferBet(winner *Player, looser *Player, bet MarblesAmount) bool {
+	looser.MarblesAmount -= bet
+	winner.MarblesAmount += bet
+
+	fmt.Println("&v won", winner.role)
+
+	return looser.MarblesAmount == 0
 }
 
 func getPlayerName() string {

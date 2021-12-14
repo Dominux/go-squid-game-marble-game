@@ -1,7 +1,15 @@
 package main
 
-import "fmt"
+import game "github.com/Dominux/go-squid-game-marble-game/internal"
 
 func main() {
-	fmt.Println("Sub, nibba")
+	g := game.NewGame()
+
+	for {
+		g.Player1.MakeMove(g)
+		g.Player2.MakeMove(g)
+		if g.EndMove() {
+			break
+		}
+	}
 }
