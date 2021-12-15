@@ -1,11 +1,10 @@
 package game
 
 import (
-	"bufio"
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
+
+	gi "github.com/Dominux/go-squid-game-marble-game/internal/game_interactors"
 )
 
 type MarblesAmount uint8
@@ -19,6 +18,8 @@ type Player struct {
 }
 
 func (p *Player) MakeMove(g *Game) {
+	g.gameInteractor.Say(fmt.Sprintf("\n%s's move:", p.Name))
+
 	switch p.role {
 	case Riddler:
 		p.makeMoveAsRiddler(g)
@@ -29,31 +30,23 @@ func (p *Player) MakeMove(g *Game) {
 
 func (p *Player) makeMoveAsRiddler(g *Game) {
 	// Getting amount of marbles the riddler is gonna put
-	fmt.Println("Choose even or odd amount of your marbles:")
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		text, _ := reader.ReadString('\n')
-		amount, err := strconv.Atoi(text)
-		if err != nil {
-			fmt.Println("Ya stupid dumba, write proper number!")
-			continue
-		} else if amount < 0 || amount > int(p.MarblesAmount) {
-			fmt.Println("Ya stupid dumba, write proper amount of marbles you have!")
-			continue
-		}
-
-		g.parety = Parety(amount % 2)
-		return
+	amount, err := g.gameInteractor.GetNumber("Choose even or odd amount of your marbles:")
+	for err != nil || amount < 0 || amount > int(p.MarblesAmount) {
+		amount, err = g.gameInteractor.GetNumber("Something went wrong, try again:")
 	}
+
+	g.parety = Parety(amount % 2)
 }
 
 func (p *Player) makeMoveAsGuesser(g *Game) {
 	// Getting guessed parety
-	fmt.Println("Guess if the riddler chosen \"even\" or \"odd\" amount of his marbles:")
-	reader := bufio.NewReader(os.Stdin)
 loopA:
 	for {
-		text, _ := reader.ReadString('\n')
+		text, err := g.gameInteractor.GetString("Guess if the riddler chosen \"even\" or \"odd\" amount of his marbles:")
+		if err != nil {
+			continue
+		}
+
 		switch strings.ToLower(text) {
 		case "even":
 			g.guessedParety = Even
@@ -67,10 +60,8 @@ loopA:
 	}
 
 	// Getting bet
-	fmt.Println("Bet amount of marbles that isn't bigger than yours nor your opponent:")
 	for {
-		text, _ := reader.ReadString('\n')
-		bet, err := strconv.Atoi(text)
+		bet, err := g.gameInteractor.GetNumber("Bet amount of marbles that isn't bigger than yours nor your opponent:")
 		if err != nil {
 			fmt.Println(err)
 		} else if bet < 0 || bet > int(p.MarblesAmount) {
@@ -97,67 +88,82 @@ const (
 )
 
 type Game struct {
-	Player1       Player
-	Player2       Player
-	parety        Parety
-	guessedParety Parety
-	bet           MarblesAmount
+	Player1        Player
+	Player2        Player
+	gameInteractor gi.GameInteractor
+	parety         Parety
+	guessedParety  Parety
+	bet            MarblesAmount
 }
 
-func NewGame() *Game {
-	player1_name := getPlayerName()
-	player2_name := getPlayerName()
+func NewGame(gi gi.GameInteractor) *Game {
+	player1_name, _ := gi.GetString("Write ur dickin' name, looser:")
+	player2_name, _ := gi.GetString("Write ur dickin' name, looser:")
 
-	player1 := Player{Name: player1_name, MarblesAmount: INIT_MARBLES_AMOUNT}
-	player2 := Player{Name: player2_name, MarblesAmount: INIT_MARBLES_AMOUNT}
+	player1 := Player{Name: player1_name, MarblesAmount: INIT_MARBLES_AMOUNT, role: Riddler}
+	player2 := Player{Name: player2_name, MarblesAmount: INIT_MARBLES_AMOUNT, role: Guesser}
 
 	return &Game{
-		Player1: player1,
-		Player2: player2,
+		Player1:        player1,
+		Player2:        player2,
+		gameInteractor: gi,
 	}
 }
 
-func (g *Game) EndMove() bool {
+func (g *Game) EndRound() bool {
 	// Validation
-	if g.parety == 0 || g.guessedParety == 0 || g.bet == 0 {
-		panic("LOOOOOL!")
+	if g.bet == 0 {
+		panic("bet is zero")
 	}
 
-	// Getting guesser and riddler
+	// Getting guesser and riddler and chaging their roles
 	var riddler *Player
 	var guesser *Player
 	for _, p := range []*Player{&g.Player1, &g.Player2} {
 		switch p.role {
 		case Riddler:
 			riddler = p
+			p.role = Guesser
 		case Guesser:
 			guesser = p
+			p.role = Riddler
 		}
 	}
 
+	var isGameEnded bool
 	if g.parety == g.guessedParety {
-		// Guesser won
-		return transferBet(guesser, riddler, g.bet)
+		// Guesser won the round
+		isGameEnded = g.transferBet(guesser, riddler, g.bet)
 	} else {
-		// Riddler won
-		return transferBet(riddler, guesser, g.bet)
+		// Riddler won the round
+		isGameEnded = g.transferBet(riddler, guesser, g.bet)
 	}
+
+	if !isGameEnded {
+		g.SayGameStatus()
+	}
+
+	return isGameEnded
 }
 
 // Transfer bet from the looser to the winner
 // and check if looser is lack of marbles
-func transferBet(winner *Player, looser *Player, bet MarblesAmount) bool {
+func (g *Game) transferBet(winner *Player, looser *Player, bet MarblesAmount) bool {
 	looser.MarblesAmount -= bet
 	winner.MarblesAmount += bet
 
-	fmt.Println("&v won", winner.role)
+	isGameEnded := looser.MarblesAmount == 0
+	if isGameEnded {
+		g.gameInteractor.Say(fmt.Sprintf("The game is over, player %v won!", winner.Name))
+	} else {
+		g.gameInteractor.Say(fmt.Sprintf("%v won the round", winner.Name))
+	}
 
-	return looser.MarblesAmount == 0
+	return isGameEnded
 }
 
-func getPlayerName() string {
-	fmt.Println("Write ur dickin' name, looser:")
-	reader := bufio.NewReader(os.Stdin)
-	name, _ := reader.ReadString('\n')
-	return name
+func (g *Game) SayGameStatus() {
+	player1_status := fmt.Sprintf("Player %s: %d", g.Player1.Name, g.Player1.MarblesAmount)
+	player2_status := fmt.Sprintf("Player %s: %d", g.Player2.Name, g.Player2.MarblesAmount)
+	g.gameInteractor.Say(fmt.Sprintf("\n%s\n%s\n\n", player1_status, player2_status))
 }

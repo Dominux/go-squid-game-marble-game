@@ -1,14 +1,20 @@
 package main
 
-import game "github.com/Dominux/go-squid-game-marble-game/internal"
+import (
+	game "github.com/Dominux/go-squid-game-marble-game/internal"
+	gi "github.com/Dominux/go-squid-game-marble-game/internal/game_interactors"
+)
 
 func main() {
-	g := game.NewGame()
+	gi := gi.NewTerminalGameInteractor()
+	g := game.NewGame(gi)
 
 	for {
 		g.Player1.MakeMove(g)
 		g.Player2.MakeMove(g)
-		if g.EndMove() {
+		isGameEnded := g.EndRound()
+
+		if isGameEnded {
 			break
 		}
 	}
